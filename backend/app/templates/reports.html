@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reports · ExpenseFlow</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+<div class="app-shell">
+  {% include "_sidebar.html" %}
+  <main class="main-content">
+    <div class="topbar">
+      <div class="d-flex align-items-center gap-3">
+        <button class="mobile-toggle" onclick="toggleSidebar()"><i class="bi bi-list" style="font-size:20px;"></i></button>
+        <div>
+          <h1>Reports</h1>
+          <div class="page-subtitle">Export your expense data for record keeping</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-7">
+        <div class="card-surface">
+          <div class="card-surface-title">Export Expense Report</div>
+          <div class="card-surface-subtitle">Choose a period and download your data</div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-6">
+              <label class="form-label">Month</label>
+              <select class="form-select" id="reportMonth"><option value="">All months</option></select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Year</label>
+              <select class="form-select" id="reportYear"><option value="">All years</option></select>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-primary" onclick="exportFile('csv')"><i class="bi bi-filetype-csv me-2"></i>Download CSV</button>
+            <button class="btn btn-outline-primary" onclick="exportFile('pdf')"><i class="bi bi-filetype-pdf me-2"></i>Download PDF</button>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="card-surface">
+          <div class="card-surface-title">What's included</div>
+          <ul class="list-unstyled mt-3" style="font-size:13.5px;color:var(--gray-600);">
+            <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Date, title, category & amount for every expense</li>
+            <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Payment method breakdown</li>
+            <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Notes attached to each entry</li>
+            <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Computed totals (PDF report)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+function populateSelectors() {
+  const monthSel = document.getElementById("reportMonth");
+  for (let m = 1; m <= 12; m++) {
+    const opt = document.createElement("option"); opt.value = m; opt.textContent = monthName(m);
+    monthSel.appendChild(opt);
+  }
+  const yearSel = document.getElementById("reportYear");
+  const currentYear = new Date().getFullYear();
+  for (let y = currentYear - 2; y <= currentYear + 1; y++) {
+    const opt = document.createElement("option"); opt.value = y; opt.textContent = y;
+    yearSel.appendChild(opt);
+  }
+  monthSel.value = new Date().getMonth() + 1;
+  yearSel.value = currentYear;
+}
+
+function exportFile(type) {
+  const month = document.getElementById("reportMonth").value;
+  const year = document.getElementById("reportYear").value;
+  const params = new URLSearchParams();
+  if (month) params.set("month", month);
+  if (year) params.set("year", year);
+  window.location.href = `/api/reports/export/${type}?${params.toString()}`;
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  initShell(user);
+  populateSelectors();
+})();
+</script>
+</body>
+</html>

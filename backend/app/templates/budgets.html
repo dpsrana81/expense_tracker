@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Budgets · ExpenseFlow</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+<div class="app-shell">
+  {% include "_sidebar.html" %}
+  <main class="main-content">
+    <div class="topbar">
+      <div class="d-flex align-items-center gap-3">
+        <button class="mobile-toggle" onclick="toggleSidebar()"><i class="bi bi-list" style="font-size:20px;"></i></button>
+        <div>
+          <h1>Budgets</h1>
+          <div class="page-subtitle">Set monthly spending limits per category</div>
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <select class="form-select" id="monthSelect" style="width:auto;"></select>
+        <select class="form-select" id="yearSelect" style="width:auto;"></select>
+        <button class="btn btn-primary" onclick="openCreateModal()"><i class="bi bi-plus-lg me-1"></i> Add Budget</button>
+      </div>
+    </div>
+
+    <div class="row g-3" id="budgetGrid"></div>
+  </main>
+</div>
+
+<div class="modal fade" id="budgetModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Set Budget Limit</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="budgetForm">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Category</label>
+            <select class="form-select" id="categorySelect" required></select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Monthly limit</label>
+            <input type="number" step="0.01" min="0.01" class="form-control" id="limitAmount" required>
+          </div>
+          <div class="text-muted" style="font-size:13px;" id="periodLabel"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Budget</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+let budgetModal;
+
+function populateSelectors() {
+  const monthSel = document.getElementById("monthSelect");
+  for (let m = 1; m <= 12; m++) {
+    const opt = document.createElement("option"); opt.value = m; opt.textContent = monthName(m);
+    monthSel.appendChild(opt);
+  }
+  const yearSel = document.getElementById("yearSelect");
+  const currentYear = new Date().getFullYear();
+  for (let y = currentYear - 1; y <= currentYear + 1; y++) {
+    const opt = document.createElement("option"); opt.value = y; opt.textContent = y;
+    yearSel.appendChild(opt);
+  }
+  monthSel.value = new Date().getMonth() + 1;
+  yearSel.value = currentYear;
+  monthSel.addEventListener("change", loadBudgets);
+  yearSel.addEventListener("change", loadBudgets);
+}
+
+async function loadCategories() {
+  const data = await API.get("/api/categories?type=expense");
+  document.getElementById("categorySelect").innerHTML = data.items.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+}
+
+async function loadBudgets() {
+  const month = document.getElementById("monthSelect").value;
+  const year = document.getElementById("yearSelect").value;
+  try {
+    const data = await API.get(`/api/budgets?month=${month}&year=${year}`);
+    renderGrid(data.items);
+  } catch (err) { showToast(err.message, "danger"); }
+}
+
+function renderGrid(items) {
+  const grid = document.getElementById("budgetGrid");
+  if (!items.length) {
+    grid.innerHTML = `<div class="col-12"><div class="card-surface"><div class="empty-state"><i class="bi bi-pie-chart"></i>No budgets set for this period yet. Click "Add Budget" to get started.</div></div></div>`;
+    return;
+  }
+  grid.innerHTML = items.map(b => {
+    const over = b.percent_used >= 100;
+    const warn = b.percent_used >= 80 && !over;
+    const barColor = over ? "bg-danger" : warn ? "bg-warning" : "bg-success";
+    const cat = b.category || { name: "Overall", color: "#6366f1", icon: "bi-wallet2" };
+    return `
+    <div class="col-md-6 col-lg-4">
+      <div class="card-surface h-100">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <span class="category-pill" style="background:${cat.color}1a;color:${cat.color};"><i class="bi ${cat.icon}"></i> ${cat.name}</span>
+          <button class="btn-icon danger" onclick="deleteBudget('${b.id}')"><i class="bi bi-trash"></i></button>
+        </div>
+        <div class="d-flex justify-content-between align-items-baseline mb-1">
+          <span class="fw-bold" style="font-size:20px;">${formatMoney(b.spent)}</span>
+          <span class="text-muted" style="font-size:13px;">of ${formatMoney(b.limit_amount)}</span>
+        </div>
+        <div class="progress progress-thin mb-2">
+          <div class="progress-bar ${barColor}" style="width:${Math.min(b.percent_used, 100)}%"></div>
+        </div>
+        <div class="d-flex justify-content-between" style="font-size:12.5px;">
+          <span class="${over ? 'text-danger fw-semibold' : 'text-muted'}">${b.percent_used}% used</span>
+          <span class="text-muted">${formatMoney(b.remaining)} left</span>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function openCreateModal() {
+  document.getElementById("budgetForm").reset();
+  const month = document.getElementById("monthSelect").value;
+  const year = document.getElementById("yearSelect").value;
+  document.getElementById("periodLabel").textContent = `Applies to ${monthName(parseInt(month))} ${year}`;
+  budgetModal.show();
+}
+
+async function deleteBudget(id) {
+  if (!confirm("Delete this budget?")) return;
+  try {
+    await API.del(`/api/budgets/${id}`);
+    showToast("Budget deleted");
+    loadBudgets();
+  } catch (err) { showToast(err.message, "danger"); }
+}
+
+document.getElementById("budgetForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const payload = {
+    category_id: document.getElementById("categorySelect").value,
+    limit_amount: parseFloat(document.getElementById("limitAmount").value),
+    month: parseInt(document.getElementById("monthSelect").value),
+    year: parseInt(document.getElementById("yearSelect").value),
+  };
+  try {
+    await API.post("/api/budgets", payload);
+    showToast("Budget saved");
+    budgetModal.hide();
+    loadBudgets();
+  } catch (err) { showToast(err.message, "danger"); }
+});
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  initShell(user);
+  budgetModal = new bootstrap.Modal(document.getElementById("budgetModal"));
+  populateSelectors();
+  await loadCategories();
+  loadBudgets();
+})();
+</script>
+</body>
+</html>

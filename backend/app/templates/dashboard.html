@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard · ExpenseFlow</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+<div class="app-shell">
+  {% include "_sidebar.html" %}
+
+  <main class="main-content">
+    <div class="topbar">
+      <div class="d-flex align-items-center gap-3">
+        <button class="mobile-toggle" onclick="toggleSidebar()"><i class="bi bi-list" style="font-size:20px;"></i></button>
+        <div>
+          <h1 id="greeting">Dashboard</h1>
+          <div class="page-subtitle">Here's your financial overview</div>
+        </div>
+      </div>
+      <div class="section-actions">
+        <div class="dashboard-meta text-end d-none d-md-block" id="dashboardMetaWrap">
+          <span>Period snapshot</span>
+          <strong id="dashboardMeta">Ready to refresh</strong>
+        </div>
+        <select class="form-select" id="monthSelect" style="width:auto;"></select>
+        <select class="form-select" id="yearSelect" style="width:auto;"></select>
+        <button class="btn btn-outline-secondary" type="button" onclick="loadDashboard()"><i class="bi bi-arrow-clockwise me-1"></i> Refresh</button>
+      </div>
+    </div>
+
+    <div id="alertsContainer"></div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-lg-3">
+        <div class="stat-card" data-dashboard-surface>
+          <div class="stat-icon" style="background:#ecfdf5;color:#059669;"><i class="bi bi-cash-stack"></i></div>
+          <div class="stat-label">Total Income</div>
+          <div class="stat-value" id="statIncome">$0.00</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="stat-card" data-dashboard-surface>
+          <div class="stat-icon" style="background:#fef2f2;color:#dc2626;"><i class="bi bi-receipt"></i></div>
+          <div class="stat-label">Total Expenses</div>
+          <div class="stat-value" id="statExpense">$0.00</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="stat-card" data-dashboard-surface>
+          <div class="stat-icon" style="background:#eef2ff;color:#4f46e5;"><i class="bi bi-piggy-bank"></i></div>
+          <div class="stat-label">Net Savings</div>
+          <div class="stat-value" id="statNet">$0.00</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="stat-card" data-dashboard-surface>
+          <div class="stat-icon" style="background:#fffbeb;color:#d97706;"><i class="bi bi-list-check"></i></div>
+          <div class="stat-label">Transactions</div>
+          <div class="stat-value" id="statCount">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-lg-7">
+        <div class="card-surface h-100" data-dashboard-surface>
+          <div class="card-surface-title">Income vs Expense Trend</div>
+          <div class="card-surface-subtitle">Last 6 months</div>
+          <canvas id="trendChart" height="230"></canvas>
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="card-surface h-100" data-dashboard-surface>
+          <div class="card-surface-title">Spending by Category</div>
+          <div class="card-surface-subtitle">Current period breakdown</div>
+          <canvas id="categoryChart" height="230"></canvas>
+          <div id="categoryLegend" class="mt-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-7">
+        <div class="card-surface" data-dashboard-surface>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div>
+              <div class="card-surface-title mb-0">Recent Expenses</div>
+            </div>
+            <a href="/expenses" class="btn btn-sm btn-outline-primary">View all</a>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-clean mb-0" id="recentTable">
+              <thead><tr><th>Title</th><th>Category</th><th>Date</th><th class="text-end">Amount</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="card-surface" data-dashboard-surface>
+          <div class="card-surface-title">Budget Alerts</div>
+          <div class="card-surface-subtitle">Categories nearing or over their limit</div>
+          <div id="budgetAlerts"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+let trendChart, categoryChart;
+
+function populateSelectors() {
+  const monthSel = document.getElementById("monthSelect");
+  const yearSel = document.getElementById("yearSelect");
+  for (let m = 1; m <= 12; m++) {
+    const opt = document.createElement("option");
+    opt.value = m; opt.textContent = monthName(m);
+    monthSel.appendChild(opt);
+  }
+  const currentYear = new Date().getFullYear();
+  for (let y = currentYear - 2; y <= currentYear + 1; y++) {
+    const opt = document.createElement("option");
+    opt.value = y; opt.textContent = y;
+    yearSel.appendChild(opt);
+  }
+  monthSel.value = new Date().getMonth() + 1;
+  yearSel.value = currentYear;
+  monthSel.addEventListener("change", loadDashboard);
+  yearSel.addEventListener("change", loadDashboard);
+}
+
+async function loadDashboard() {
+  const month = document.getElementById("monthSelect").value;
+  const year = document.getElementById("yearSelect").value;
+  setLoadingState(true, "[data-dashboard-surface]");
+  const meta = document.getElementById("dashboardMeta");
+  if (meta) meta.textContent = "Refreshing data...";
+  try {
+    const data = await API.get(`/api/dashboard/summary?month=${month}&year=${year}`);
+    document.getElementById("statIncome").textContent = formatMoney(data.total_income);
+    document.getElementById("statExpense").textContent = formatMoney(data.total_expense);
+    document.getElementById("statNet").textContent = formatMoney(data.net_savings);
+    document.getElementById("statCount").textContent = data.expense_count;
+
+    renderTrendChart(data.monthly_trend);
+    renderCategoryChart(data.category_breakdown);
+    renderRecentTable(data.recent_expenses);
+    renderBudgetAlerts(data.budget_alerts);
+
+    if (meta) {
+      meta.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    }
+  } catch (err) {
+    showToast(err.message, "danger");
+    if (meta) meta.textContent = "Update failed";
+  } finally {
+    setLoadingState(false, "[data-dashboard-surface]");
+  }
+}
+
+function renderTrendChart(trend) {
+  const labels = trend.map(t => monthName(t.month).slice(0, 3) + " " + String(t.year).slice(2));
+  const income = trend.map(t => t.income);
+  const expense = trend.map(t => t.expense);
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById("trendChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Income", data: income, borderColor: "#10b981", backgroundColor: "rgba(16,185,129,.08)", fill: true, tension: .35, pointRadius: 3 },
+        { label: "Expense", data: expense, borderColor: "#ef4444", backgroundColor: "rgba(239,68,68,.08)", fill: true, tension: .35, pointRadius: 3 },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 10, usePointStyle: true } } },
+      scales: { y: { beginAtZero: true, grid: { color: "#f1f5f9" } }, x: { grid: { display: false } } },
+    },
+  });
+}
+
+function renderCategoryChart(categories) {
+  if (categoryChart) categoryChart.destroy();
+  const legend = document.getElementById("categoryLegend");
+  if (!categories.length) {
+    document.getElementById("categoryChart").style.display = "none";
+    legend.innerHTML = '<div class="empty-state py-3"><i class="bi bi-pie-chart"></i>No expenses recorded yet</div>';
+    return;
+  }
+  document.getElementById("categoryChart").style.display = "block";
+  categoryChart = new Chart(document.getElementById("categoryChart"), {
+    type: "doughnut",
+    data: {
+      labels: categories.map(c => c.name),
+      datasets: [{ data: categories.map(c => c.amount), backgroundColor: categories.map(c => c.color), borderWidth: 2, borderColor: "#fff" }],
+    },
+    options: { plugins: { legend: { display: false } }, cutout: "68%" },
+  });
+  const total = categories.reduce((s, c) => s + c.amount, 0);
+  legend.innerHTML = categories.slice(0, 6).map(c => `
+    <div class="d-flex justify-content-between align-items-center py-1" style="font-size:13px;">
+      <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c.color};margin-right:8px;"></span>${c.name}</span>
+      <span class="fw-semibold">${formatMoney(c.amount)} <span class="text-muted">(${total ? Math.round(c.amount / total * 100) : 0}%)</span></span>
+    </div>`).join("");
+}
+
+function renderRecentTable(items) {
+  const tbody = document.querySelector("#recentTable tbody");
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state"><i class="bi bi-inbox"></i>No expenses yet — add your first one!</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = items.map(e => `
+    <tr>
+      <td class="fw-semibold">${e.title}</td>
+      <td>${e.category ? `<span class="category-pill" style="background:${e.category.color}1a;color:${e.category.color};"><i class="bi ${e.category.icon}"></i> ${e.category.name}</span>` : '<span class="text-muted">Uncategorized</span>'}</td>
+      <td class="text-muted">${formatDate(e.expense_date)}</td>
+      <td class="text-end fw-semibold">${formatMoney(e.amount)}</td>
+    </tr>`).join("");
+}
+
+function renderBudgetAlerts(alerts) {
+  const container = document.getElementById("budgetAlerts");
+  if (!alerts.length) {
+    container.innerHTML = `<div class="empty-state py-4"><i class="bi bi-check-circle"></i>All budgets are healthy</div>`;
+    return;
+  }
+  container.innerHTML = alerts.map(a => {
+    const over = a.percent_used >= 100;
+    return `
+    <div class="mb-3">
+      <div class="d-flex justify-content-between mb-1" style="font-size:13.5px;">
+        <span class="fw-semibold">${a.category}</span>
+        <span class="${over ? 'text-danger' : 'text-warning'} fw-semibold">${a.percent_used}%</span>
+      </div>
+      <div class="progress progress-thin">
+        <div class="progress-bar ${over ? 'bg-danger' : 'bg-warning'}" style="width:${Math.min(a.percent_used, 100)}%"></div>
+      </div>
+      <div class="text-muted mt-1" style="font-size:12px;">${formatMoney(a.spent)} of ${formatMoney(a.limit)} spent</div>
+    </div>`;
+  }).join("");
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  initShell(user);
+  document.getElementById("greeting").textContent = `Welcome back, ${user.full_name.split(" ")[0]}`;
+  populateSelectors();
+  loadDashboard();
+})();
+</script>
+</body>
+</html>
