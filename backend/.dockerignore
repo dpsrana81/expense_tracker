@@ -1,8 +1,0 @@
-__pycache__/
-*.pyc
-.env
-instance/
-venv/
-.git/
-*.db
-app/static/uploads/*
